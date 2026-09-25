@@ -12,7 +12,7 @@ export const verifyEmail = async (token, email) => {
     }/verify/${token}`;
 
     const { data, error } = await resend.emails.send({
-      from: "Digamber Mart <onboarding@resend.dev>",   // Free tier pe ye use karo
+      from: "Digamber Mart <noreply@digambermart.com>",   // Free tier pe ye use karo
       to: email,
       subject: "Email Verification - Digamber Mart",
       html: `
