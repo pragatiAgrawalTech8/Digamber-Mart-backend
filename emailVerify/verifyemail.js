@@ -1,41 +1,40 @@
-import nodemailer from "nodemailer";
+import { Resend } from "resend";
 import "dotenv/config";
+
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 export const verifyEmail = async (token, email) => {
   try {
-    const transporter = nodemailer.createTransport({
-      service: "gmail",
-      auth: {
-        user: process.env.MAIL_USER,
-        pass: process.env.MAIL_PASS,
-      },
-    });
+    console.log("📧 Sending email via Resend to:", email);
 
     const verifyLink = `${
       process.env.FRONTEND_URL || "https://www.digambermart.com"
     }/verify/${token}`;
 
-    const mailConfigurations = {
-      from: process.env.MAIL_USER,
+    const { data, error } = await resend.emails.send({
+      from: "Digamber Mart <onboarding@resend.dev>",   // Free tier pe ye use karo
       to: email,
       subject: "Email Verification - Digamber Mart",
       html: `
         <h2>Welcome to Digamber Mart!</h2>
-        <p>Please click the link below to verify your email:</p>
-        <a href="${verifyLink}" 
-           style="background:#DB2777;color:white;padding:10px 20px;text-decoration:none;border-radius:5px;">
+        <p>Click below to verify:</p>
+        <a href="${verifyLink}" style="background:#DB2777;color:white;padding:10px 20px;text-decoration:none;border-radius:5px;">
           Verify Email
         </a>
-        <p>Or copy this link: ${verifyLink}</p>
-        <p>This link expires in 10 minutes.</p>
+        <p>Or copy: ${verifyLink}</p>
+        <p>Link expires in 10 minutes.</p>
       `,
-    };
+    });
 
-    const info = await transporter.sendMail(mailConfigurations);
-    console.log("✅ Email Sent Successfully:", info.messageId);
-    return info;
+    if (error) {
+      console.error("❌ Resend error:", error);
+      return null;
+    }
+
+    console.log("✅ Email Sent Successfully:", data.id);
+    return data;
   } catch (error) {
     console.error("❌ Email Send Failed:", error.message);
-    return null; // Don't throw — server crash na ho
+    return null;
   }
 };
