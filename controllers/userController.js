@@ -6,77 +6,173 @@ import { verifyEmail } from "../emailVerify/verifyemail.js";
 import { Session } from "../models/sessionModel.js"
 import { sendOTPMail } from "../emailVerify/sendOTPMail.js";
 import cloudinary from "../config/cloudinary.js";
+import { sendOtp } from "../services/otpService.js"
+import { verifyOtp as msg91Verify } from "../services/otpService.js";
+import { retryOtp as msg91Retry } from "../services/otpService.js"; 
+// export const register = async (req, res) => {
+//     try {
+//         const { firstName, lastName, email, password } = req.body;
 
+//         if (!firstName || !lastName || !email || !password) {
+//             return res.status(400).json({
+//                 success: false,
+//                 message: "All fields are required"
+//             });
+//         }
+
+//         const existingUser = await User.findOne({ email });
+
+//         if (existingUser) {
+//             return res.status(400).json({
+//                 success: false,
+//                 message: "User already exists"
+//             });
+//         }
+
+//         const hashedPassword = await bcrypt.hash(password, 10);
+
+//         const newUser = await User.create({
+//             firstName,
+//             lastName,
+//             email,
+//             password: hashedPassword,
+//             isVerified: false
+//         });
+
+
+//         // Email verification token
+//         const verifyToken = jwt.sign(
+//             { id: newUser._id },
+//             process.env.SECRET_KEY,
+//             { expiresIn: "10m" }
+//         );
+
+//         await verifyEmail(verifyToken, email);
+
+
+//         // Access token for frontend storage
+//         const accessToken = jwt.sign(
+//             { id: newUser._id },
+//             process.env.SECRET_KEY,
+//             { expiresIn: "7d" }
+//         );
+
+
+//         return res.status(201).json({
+//             success: true,
+//             message: "User registered successfully",
+//             accessToken,
+//             user: {
+//                 id: newUser._id,
+//                 firstName: newUser.firstName,
+//                 lastName: newUser.lastName,
+//                 email: newUser.email
+//             }
+//         });
+
+
+//     } catch (error) {
+//         return res.status(500).json({
+//             success: false,
+//             message: error.message
+//         });
+//     }
+// };
 export const register = async (req, res) => {
-    try {
-        const { firstName, lastName, email, password } = req.body;
+  try {
+    console.log("Body received:", req.body);
 
-        if (!firstName || !lastName || !email || !password) {
-            return res.status(400).json({
-                success: false,
-                message: "All fields are required"
-            });
-        }
+    const { firstName, lastName, email, password, phoneNo } = req.body;
 
-        const existingUser = await User.findOne({ email });
-
-        if (existingUser) {
-            return res.status(400).json({
-                success: false,
-                message: "User already exists"
-            });
-        }
-
-        const hashedPassword = await bcrypt.hash(password, 10);
-
-        const newUser = await User.create({
-            firstName,
-            lastName,
-            email,
-            password: hashedPassword,
-            isVerified: false
-        });
-
-
-        // Email verification token
-        const verifyToken = jwt.sign(
-            { id: newUser._id },
-            process.env.SECRET_KEY,
-            { expiresIn: "10m" }
-        );
-
-        await verifyEmail(verifyToken, email);
-
-
-        // Access token for frontend storage
-        const accessToken = jwt.sign(
-            { id: newUser._id },
-            process.env.SECRET_KEY,
-            { expiresIn: "7d" }
-        );
-
-
-        return res.status(201).json({
-            success: true,
-            message: "User registered successfully",
-            accessToken,
-            user: {
-                id: newUser._id,
-                firstName: newUser.firstName,
-                lastName: newUser.lastName,
-                email: newUser.email
-            }
-        });
-
-
-    } catch (error) {
-        return res.status(500).json({
-            success: false,
-            message: error.message
-        });
+    // ✅ Validation
+    if (!firstName || !lastName || !email || !password || !phoneNo) {
+      return res.status(400).json({
+        success: false,
+        message: "All fields are required",
+      });
     }
-};
 
+    // ✅ Email format check
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid email address",
+      });
+    }
+
+    // ✅ Phone number check (10 digit Indian)
+    if (!/^[6-9]\d{9}$/.test(phoneNo)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid phone number",
+      });
+    }
+
+    // ✅ Check existing user by email
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        message: "User already exists with this email",
+      });
+    }
+
+    // ✅ Check existing user by phoneNo
+    const existingPhone = await User.findOne({ phoneNo });
+    if (existingPhone) {
+      return res.status(400).json({
+        success: false,
+        message: "User already exists with this phone number",
+      });
+    }
+
+    // ✅ Password hash करें
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // ✅ User create करें (Model के field names के साथ exactly match)
+    const user = await User.create({
+      firstName,
+      lastName,
+      email,
+      password: hashedPassword,
+      phoneNo,
+      isVerified: false,
+    });
+
+    // ✅ MSG91 से OTP भेजें
+    try {
+      const otpResponse = await sendOtp(phoneNo);
+      console.log("MSG91 OTP Response:", otpResponse);
+    } catch (otpError) {
+      console.log("OTP send failed:", otpError.message);
+      // अगर OTP fail हो, तो user delete कर दें
+      await User.findByIdAndDelete(user._id);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to send OTP. Please try again.",
+      });
+    }
+
+    res.status(201).json({
+      success: true,
+      message: "OTP sent to your mobile",
+      user: {
+        _id: user._id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        phoneNo: user.phoneNo,
+      },
+    });
+
+  } catch (error) {
+    console.log("Register error:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
 export const verify = async (req, res) => {
     try {
         const authHeader = req.headers.authorization
@@ -263,56 +359,102 @@ export const forgotPassword = async (req, res) => {
     }
 }
 
-export const verifyOTP = async (req, res) => {
-    try {
-        const { otp } = req.body
-        const email = req.params.email
-        if (!otp) {
-            return res.status(400).json({
-                success: false,
-                message: "Otp is required"
-            })
-        }
-        const user = await User.findOne({ email })
-        if (!user) {
-            return res.status(400).json({
-                success: false,
-                message: "User not found"
-            })
-        }
-        if (!user.otp || !user.otpExpiry) {
-            return res.status(400).json({
-                success: false,
-                message: "Otp is not generated or already verified"
-            })
-        }
-        if (user.otpExpiry < new Date()) {
-            return res.status(400).json({
-                success: false,
-                message: "Otp has expired please request a new one"
-            })
-        }
-        if (Number(otp) !== Number(user.otp)) {
-            return res.status(400).json({
-                success: false,
-                message: "Otp is Invalid"
-            })
-        }
-        user.otp = null
-        user.otpExpiry = null
-        await user.save()
-        return res.status(200).json({
-            success: true,
-            message: "Otp verified successfully"
-        })
 
-    } catch (error) {
-        return res.status(500).json({
-            success: false,
-            message: error.message
-        })
+
+export const verifyOtp = async (req, res) => {
+  try {
+    console.log("Verify body:", req.body);
+
+    const { phoneNo, otp } = req.body;
+
+    if (!phoneNo || !otp) {
+      return res.status(400).json({
+        success: false,
+        message: "Phone number and OTP are required",
+      });
     }
-}
+
+    // ✅ MSG91 से OTP verify करें
+    const result = await msg91Verify(phoneNo, otp);
+    console.log("MSG91 verify response:", result);
+
+    if (result.type === "success") {
+      // ✅ User को verified mark करें
+      const user = await User.findOneAndUpdate(
+        { phoneNo },
+        { isVerified: true },
+        { new: true }
+      );
+
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: "User not found",
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: "Phone verified successfully",
+        user: {
+          _id: user._id,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          email: user.email,
+          phoneNo: user.phoneNo,
+          isVerified: user.isVerified,
+        },
+      });
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: result.message || "Invalid OTP",
+      });
+    }
+
+  } catch (error) {
+    console.log("Verify OTP error:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Invalid or expired OTP",
+    });
+  }
+};
+
+export const resendOtp = async (req, res) => {
+  try {
+    const { phoneNo } = req.body;
+
+    if (!phoneNo) {
+      return res.status(400).json({
+        success: false,
+        message: "Phone number is required",
+      });
+    }
+
+    const result = await msg91Retry(phoneNo);
+    console.log("MSG91 retry response:", result);
+
+    if (result.type === "success") {
+      return res.status(200).json({
+        success: true,
+        message: "OTP resent successfully",
+      });
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: result.message || "Failed to resend OTP",
+      });
+    }
+
+  } catch (error) {
+    console.log("Resend OTP error:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
 
 export const changePassword = async (req, res) => {
     try {
