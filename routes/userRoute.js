@@ -1,6 +1,6 @@
 import express from "express"
 
-import { register, verify, reVerify, login, logout, forgotPassword, verifyOTP, changePassword, allUser, updateUser,getSingleUser,makeAdmin,verifyOtp, resendOtp } from "../controllers/userController.js"
+import { register, verify, reVerify, login, logout, forgotPassword, verifyOtp, changePassword, allUser, updateUser,getSingleUser,makeAdmin,verifyOtp, resendOtp } from "../controllers/userController.js"
 import {isAdmin,isAuthenticated} from "../middleware/isAuthenticated.js"
 import {singleUpload} from "../middleware/multer.js"
 
